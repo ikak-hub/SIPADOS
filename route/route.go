@@ -16,6 +16,7 @@ import (
 // menambahkan satu field untuk modul miliknya, lalu mendaftarkan route-nya
 // pada Register di bawah.
 type Services struct {
+	Auth   *service.AuthService
 	Period *service.PeriodService
 	// Vacancy     *service.VacancyService
 	// Application *service.ApplicationService
@@ -25,18 +26,31 @@ type Services struct {
 //
 // Perhatikan isi file ini: tidak ada logika bisnis, tidak ada query,
 // tidak ada validasi. Hanya daftar alamat dan siapa yang melayaninya.
-func Register(app *fiber.App, pool *pgxpool.Pool, s Services) {
+//
+// authRequired adalah middleware.JWT yang sudah berisi secret; route tidak
+// perlu mengetahui secret itu sendiri.
+func Register(app *fiber.App, pool *pgxpool.Pool, s Services, authRequired fiber.Handler) {
 	api := app.Group("/api/v1")
+	adminOnly := middleware.RequireRole(helper.RoleAdmin)
 
+	// Publik
 	api.Get("/health", healthCheck(pool))
 
-	periods := api.Group("/periods", middleware.RequireJSON)
+	auth := api.Group("/auth", middleware.RequireJSON)
+	auth.Post("/register", s.Auth.Register)
+	auth.Post("/login", s.Auth.Login)
+
+	// Perlu token (semua role)
+	api.Get("/auth/me", authRequired, s.Auth.Me)
+
+	// Periode: baca untuk semua role, tulis hanya admin
+	periods := api.Group("/periods", authRequired, middleware.RequireJSON)
 	periods.Get("/", s.Period.List)
 	periods.Get("/:id", s.Period.Get)
-	periods.Post("/", s.Period.Create)
-	periods.Put("/:id", s.Period.Replace)
-	periods.Patch("/:id", s.Period.Patch)
-	periods.Delete("/:id", s.Period.Delete)
+	periods.Post("/", adminOnly, s.Period.Create)
+	periods.Put("/:id", adminOnly, s.Period.Replace)
+	periods.Patch("/:id", adminOnly, s.Period.Patch)
+	periods.Delete("/:id", adminOnly, s.Period.Delete)
 }
 
 // healthCheck melaporkan kondisi layanan beserta databasenya.

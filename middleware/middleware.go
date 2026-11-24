@@ -61,3 +61,47 @@ func RequireJSON(c *fiber.Ctx) error {
 	}
 	return c.Next()
 }
+
+// JWT memeriksa header "Authorization: Bearer <token>". Bila valid, identitas
+// pengguna disimpan di c.Locals (dibaca lewat helper.CurrentUser); bila tidak,
+// permintaan dihentikan dengan 401. Dipasang per grup route, bukan global.
+func JWT(secret string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		scheme, token, found := strings.Cut(c.Get(fiber.HeaderAuthorization), " ")
+		token = strings.TrimSpace(token)
+		if !found || !strings.EqualFold(scheme, "Bearer") || token == "" {
+			c.Set(fiber.HeaderWWWAuthenticate, "Bearer")
+			return helper.Fail(c, fiber.StatusUnauthorized, "token autentikasi diperlukan")
+		}
+
+		claims, err := helper.ParseToken(secret, token)
+		if err != nil {
+			c.Set(fiber.HeaderWWWAuthenticate, "Bearer")
+			return helper.Fail(c, fiber.StatusUnauthorized, "token tidak valid atau kedaluwarsa")
+		}
+
+		c.Locals(helper.LocalUserID, claims.UserID)
+		c.Locals(helper.LocalRole, claims.Role)
+		return c.Next()
+	}
+}
+
+// RequireRole hanya meloloskan pengguna dengan salah satu role yang diizinkan.
+// Harus dipasang SETELAH middleware JWT; bila tidak, hasilnya 401.
+func RequireRole(roles ...string) fiber.Handler {
+	allowed := make(map[string]bool, len(roles))
+	for _, role := range roles {
+		allowed[role] = true
+	}
+
+	return func(c *fiber.Ctx) error {
+		_, role, ok := helper.CurrentUser(c)
+		if !ok {
+			return helper.Fail(c, fiber.StatusUnauthorized, "token autentikasi diperlukan")
+		}
+		if !allowed[role] {
+			return helper.Fail(c, fiber.StatusForbidden, "akses ditolak untuk role ini")
+		}
+		return c.Next()
+	}
+}
