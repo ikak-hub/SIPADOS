@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -19,6 +20,15 @@ func LoadEnv() {
 func GetEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok && value != "" {
 		return value
+	}
+	return fallback
+}
+
+// GetEnvInt membaca variabel environment bertipe angka; nilai kosong atau
+// bukan angka positif diganti nilai bawaan.
+func GetEnvInt(key string, fallback int) int {
+	if n, err := strconv.Atoi(GetEnv(key, "")); err == nil && n > 0 {
+		return n
 	}
 	return fallback
 }

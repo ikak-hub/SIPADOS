@@ -13,14 +13,16 @@ import (
 
 // NewApp merakit aplikasi: membuat instance Fiber, memasang middleware,
 // lalu mendaftarkan route. File ini adalah tempat seluruh bagian bertemu.
-func NewApp(logger *slog.Logger, pool *pgxpool.Pool, services route.Services) *fiber.App {
+func NewApp(
+	logger *slog.Logger, pool *pgxpool.Pool, services route.Services, jwtSecret string,
+) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      GetEnv("APP_NAME", "SIPASDOS"),
 		ErrorHandler: newErrorHandler(logger),
 	})
 
 	middleware.Register(app, logger)
-	route.Register(app, pool, services)
+	route.Register(app, pool, services, middleware.JWT(jwtSecret))
 
 	// Penampung terakhir untuk URL yang tidak dikenal.
 	app.Use(func(c *fiber.Ctx) error {
