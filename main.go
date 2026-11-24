@@ -22,6 +22,14 @@ func main() {
 	config.LoadEnv()
 	logger := config.NewLogger()
 
+	// JWT: secret wajib ada dan cukup panjang; aplikasi menolak menyala tanpa itu.
+	jwtSecret := config.GetEnv("JWT_SECRET", "")
+	if len(jwtSecret) < 32 {
+		logger.Error("JWT_SECRET wajib diisi minimal 32 karakter (contoh: openssl rand -hex 32)")
+		os.Exit(1)
+	}
+	tokenTTL := time.Duration(config.GetEnvInt("JWT_TTL_HOURS", 24)) * time.Hour
+
 	// 2. Database
 	pool, err := database.NewPool(context.Background())
 	if err != nil {
@@ -33,15 +41,19 @@ func main() {
 	// 3. Perakitan dari dalam ke luar: repository -> service
 	//    Anggota lain menambah pasangan repository + service di sini,
 	//    lalu mendaftarkannya pada route.Services.
+	userRepository := repository.NewUserRepository(pool)
+	authService := service.NewAuthService(userRepository, jwtSecret, tokenTTL)
+
 	periodRepository := repository.NewPeriodRepository(pool)
 	periodService := service.NewPeriodService(periodRepository)
 
 	services := route.Services{
+		Auth:   authService,
 		Period: periodService,
 	}
 
 	// 4. Aplikasi
-	app := config.NewApp(logger, pool, services)
+	app := config.NewApp(logger, pool, services, jwtSecret)
 
 	port := config.GetEnv("APP_PORT", "3000")
 	go func() {
